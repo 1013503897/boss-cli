@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Gradle / unidbg oracle
+signer-unidbg/.gradle/
+signer-unidbg/build/
+signer-unidbg/run_verbose*.log
+
+# secrets: session.local.json holds your t2 auth token + device profile
+session.local.json
+
+# large binaries / samples (not committed; see README for how to obtain)
+*.so
+*.apk
+*.der
+signer-unidbg/yzwg/
+secrets/
+captures/*.raw
+
+# editor
+.idea/
+.vscode/
