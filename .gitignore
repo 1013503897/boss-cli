@@ -25,3 +25,7 @@ captures/*.raw
 # editor
 .idea/
 .vscode/
+
+# research scaffolding — not shipped in the public tool repo (kept locally)
+signer-unidbg/
+frida/
