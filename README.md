@@ -6,6 +6,8 @@ Search **BOSS直聘 (com.hpbr.bosszhipin)** jobs from your terminal or from an A
 pure Python, no phone/emulator needed to run. It reproduces the app's native request signing
 (`libyzwg.so`) in Python, so a plain HTTP request gets accepted by the server.
 
+![boss-cli searching real jobs from the terminal](docs/cli-search.png)
+
 ```bash
 $ boss search "安卓逆向" --city 北京,上海,杭州
 # 12 jobs for '安卓逆向' (cities=['北京', '上海', '杭州'], page=1)
@@ -118,6 +120,8 @@ session.example.json   template for your session
 
 在终端或 AI agent 里搜 **BOSS直聘（com.hpbr.bosszhipin）** 职位 —— 纯 Python、离设备，跑的时候不需要手机/模拟器。
 它把 App 的 native 请求加签库（`libyzwg.so`）用 Python 复现了出来，所以一条普通 HTTP 请求就能被服务器接受。
+
+![在终端里搜到真实职位](docs/cli-search.png)
 
 ```bash
 $ boss search "安卓逆向" --city 北京,上海,杭州
