@@ -196,7 +196,7 @@ BOSS_SESSION=./session.local.json python -m bosscli.mcp_server
 
 在 MCP 客户端里注册（如 `~/.claude.json`）；工具名 `boss_search(query, city?, page?, sort?)`。
 
-## 原理（一句话版）
+## 原理
 
 BOSS直聘的搜索走一个批量端点，参数里带两个防篡改值 —— `sp`（加密参数串）和 `sig`（签名），都由 native 库
 `libyzwg.so` 生成。本项目把这个库的加签/加密**用纯 Python 复现**（`bosscli/yzwg.py`），装配批量请求
