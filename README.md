@@ -147,9 +147,9 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 pip install -r requirements.txt          # lz4、requests（MCP 服务另需 mcp 包）
 ```
 
-## 获取 session（一次性）
+## 获取 session
 
-客户端需要从一台你自己、**已登录**的 BOSS直聘设备上拿三样东西：
+客户端需要从一台**已登录** BOSS直聘的设备上拿三个凭证：
 
 | 字段 | 来源 |
 |---|---|
@@ -157,14 +157,14 @@ pip install -r requirements.txt          # lz4、requests（MCP 服务另需 mcp
 | `client_info` | query 参数 `client_info`（一段 JSON：机型 / uniqid / did …） |
 | `uniqid` | 在 `client_info` 里面 |
 
-用任意 HTTPS 抓包工具（Reqable / Charles / mitmproxy；App 若做了证书绑定，配个 frida SSL unpin 脚本）
+用任意 HTTPS 抓包工具
 抓一条 App 发出的 `GET https://api5.zhipin.com/api/batch/requests`，把上面几个值填进 `session.local.json`：
 
 ```bash
 cp session.example.json session.local.json    # 再把你的 t2 / client_info / uniqid / cardlist_defaults 粘进去
 ```
 
-`session.local.json` 已被 gitignore（里面是你的 token）。`t2` 会过期 —— 搜索开始返回 `invalid auth` 时，照上面再抓一个新的即可。
+`t2` 会过期 —— 搜索开始返回 `invalid auth` 时，照上面再抓一个新的即可。
 
 ## 用法
 
