@@ -27,6 +27,14 @@ class BossClient:
     # ---- response decode: server picks encoding via zp-* headers ----
     @staticmethod
     def _decode(raw: bytes, key: str | None):
+        # 0) plaintext JSON — the server returns some errors uncompressed/unencrypted, e.g.
+        #    {"code":7,"message":"当前登录状态已失效"} (t2 expired) on the batch endpoint. Try
+        #    this first so an auth error surfaces its message instead of crashing the RC4 path.
+        if raw.lstrip()[:1] in (b'{', b'['):
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
         # A) base64url(RC4(json|frame))  B) raw RC4(frame(LZ4(json)))  C) raw RC4(json)
         try:
             dec = yzwg.rc4(yzwg._rc4_key(key), yzwg._unb64(raw.decode('ascii')))

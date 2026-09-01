@@ -1,0 +1,26 @@
+{
+  "_comment": "Byte-exact vectors captured from BOSS直聘 v14.050 on a Pixel 6 via frida RPC into com.twl.signer.a (a.f / a.d / a.i, key=null). See scratchpad/validate_login_signing.py. These pin the login flow: encodePassword(phone) and the m.e() send-code signing.",
+  "encode_password": {
+    "13800138000": "vGMXRniPdWeAu0A=",
+    "18612345678": "vGgZR3qNcmqGvEg=",
+    "09171234567": "vWkeQXmMdWuFvUc=",
+    "hello world": "5TVDGieeMTDC5xQ=",
+    "P@ssw0rd!": "3RBcBT+ONDuR"
+  },
+  "send_code_signing": {
+    "path": "/api/zppassport/phone/smsCode",
+    "params": {
+      "client_info": "{\"os\":\"Android\",\"model\":\"Pixel 6\",\"uniqid\":\"testuniq123\"}",
+      "curidentity": "0",
+      "req_time": "1723967000000",
+      "uniqid": "testuniq123",
+      "v": "14.050",
+      "phone": "vGMXRniPdWeAu0A=",
+      "regionCode": "+86",
+      "type": "3",
+      "voice": "0"
+    },
+    "strD": "client_info=%7B%22os%22%3A%22Android%22%2C%22model%22%3A%22Pixel+6%22%2C%22uniqid%22%3A%22testuniq123%22%7D&curidentity=0&phone=vGMXRniPdWeAu0A%3D&regionCode=%2B86&req_time=1723967000000&type=3&uniqid=testuniq123&v=14.050&voice=0",
+    "sig": "V3.0c20017b1a56142bc86a560a079bffb13"
+  }
+}
