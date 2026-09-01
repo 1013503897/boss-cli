@@ -199,6 +199,136 @@ def cmd_filters(args):
           "scale / stage / jobType / industry / position。")
 
 
+def _run(fn):
+    """Call an endpoint, translating AuthExpired into the standard hint/exit."""
+    try:
+        return fn()
+    except AuthExpired:
+        _auth_hint(); sys.exit(2)
+
+
+def _check_code(resp: dict, what: str):
+    if isinstance(resp, dict) and resp.get("code") not in (0, None):
+        msg = resp.get("message")
+        print(f"[!] {what}: code={resp.get('code')} {msg}", file=sys.stderr)
+        if resp.get("code") in (36, 37):
+            print("    [i] 触发 BOSS 风控/频控，请降低频率、稍后再试。", file=sys.stderr)
+        sys.exit(2)
+
+
+def cmd_whoami(args):
+    client = _client(args)
+    resp = _run(lambda: client.whoami())
+    _check_code(resp, "whoami")
+    if args.json:
+        print(json.dumps(resp, ensure_ascii=False, indent=2)); return
+    expects = BossClient.parse_expects(resp)
+    print(f"# uid={client.s.get('uid')}  求职期望 {len(expects)} 个")
+    for e in expects:
+        print(f"- [{e['kind']}] {e['positionName']} | {e['salary']} | {e['location']}  "
+              f"expectId={e['expectId']} encryptExpectId={e['encryptExpectId']}")
+    if args.set_expect and expects:
+        e = expects[0]
+        with open(args.session, encoding="utf-8") as f:
+            sess = json.load(f)
+        cd = sess.setdefault("cardlist_defaults", {})
+        cd["expectId"] = str(e["expectId"]) if e["expectId"] is not None else cd.get("expectId")
+        if e["encryptExpectId"]:
+            cd["encryptExpectId"] = e["encryptExpectId"]
+        with open(args.session, "w", encoding="utf-8") as f:
+            json.dump(sess, f, ensure_ascii=False, indent=2)
+        print(f"[✓] 已把 expectId={cd['expectId']} 写回 {args.session} 的 cardlist_defaults")
+
+
+def cmd_detail(args):
+    client = _client(args)
+    resp = _run(lambda: client.job_detail(args.security_id, lid=args.lid, expect_id=args.expect_id))
+    _check_code(resp, "detail")
+    if args.json:
+        print(json.dumps(resp, ensure_ascii=False, indent=2)); return
+    zp = resp.get("zpData", resp) or {}
+    jb = zp.get("jobBaseInfo") or {}
+    boss = zp.get("bossBaseInfo") or {}
+    brand = zp.get("brandComInfo") or {}
+    print(f"# {jb.get('jobName') or jb.get('positionName') or '(职位)'} | {jb.get('salaryDesc','')}")
+    print(f"  公司: {brand.get('brandName','')}  {brand.get('scaleName','')} {brand.get('stageName','')}")
+    print(f"  boss: {boss.get('name','')} {boss.get('title','')}")
+    loc = jb.get("locationName") or jb.get("address") or ""
+    if loc:
+        print(f"  地点: {loc}")
+    jd = jb.get("postDescription") or jb.get("jobDesc") or ""
+    if jd:
+        print("  --- JD ---")
+        print("  " + jd.replace("\n", "\n  "))
+
+
+def cmd_recommend(args):
+    client = _client(args)
+    resp = _run(lambda: client.recommend(page=args.page, page_size=args.limit or 15,
+                                         expect_id=args.expect_id, encrypt_expect_id=args.encrypt_expect_id))
+    _check_code(resp, "recommend")
+    if args.json:
+        print(json.dumps(resp, ensure_ascii=False, indent=2)); return
+    zp = resp.get("zpData", resp) or {}
+    jobs = zp.get("jobList") or zp.get("results") or zp.get("list") or []
+    if not jobs:
+        print("# 未识别到 jobList，用 --json 看原始响应。keys=", list(zp.keys())); return
+    n = 0
+    for jc in jobs:
+        j = jc.get("jobInfo") or jc.get("job") or jc
+        b = jc.get("bossInfo") or {}
+        print(f"- {j.get('jobName') or j.get('positionName')} | {j.get('salaryDesc','')} | "
+              f"{j.get('brandName') or j.get('companyName','')}  ({b.get('name','')})")
+        n += 1
+        if args.limit and n >= args.limit:
+            break
+    print(f"# {n} recommended jobs")
+
+
+def cmd_cities(args):
+    client = _client(args)
+    resp = _run(lambda: client.cities())
+    _check_code(resp, "cities")
+    zp = resp.get("zpData", resp) or {}
+    flat = []
+    def walk(nodes):
+        for nd in nodes or []:
+            code, name = nd.get("code"), nd.get("name")
+            if code and name:
+                flat.append((str(code), name))
+            walk(nd.get("subLevelModelList") or nd.get("subList") or nd.get("children"))
+    walk(zp.get("city") or zp.get("cityList") or [])
+    if args.json:
+        print(json.dumps(dict(flat), ensure_ascii=False, indent=2)); return
+    kw = args.grep
+    shown = 0
+    for code, name in flat:
+        if kw and kw not in name:
+            continue
+        print(f"{code}\t{name}")
+        shown += 1
+    print(f"# {shown}/{len(flat)} cities" + (f" matching '{kw}'" if kw else ""), file=sys.stderr)
+
+
+def cmd_chat(args):
+    """WRITE action — 打招呼/发起沟通. Dry-run by default; --confirm actually sends it."""
+    client = _client(args)
+    payload = {"securityId": args.security_id, "jobId": args.job_id, "lid": args.lid,
+               "expectId": args.expect_id, "friendId": args.friend_id, "entrance": args.entrance}
+    if not args.confirm:
+        print("[dry-run] 将向 GET /api/zpgeek/app/friend/add 发起打招呼（写操作，会以你的账号发出）：")
+        print("  " + json.dumps({k: v for k, v in payload.items() if v is not None}, ensure_ascii=False))
+        print("  确认无误后加 --confirm 真正发送。")
+        return
+    resp = _run(lambda: client.add_friend(
+        args.security_id, job_id=args.job_id, lid=args.lid, expect_id=args.expect_id,
+        friend_id=args.friend_id, entrance=args.entrance))
+    _check_code(resp, "chat")
+    print(f"[✓] 打招呼成功 · {resp.get('message') or 'ok'}")
+    if args.json:
+        print(json.dumps(resp, ensure_ascii=False, indent=2))
+
+
 def _auto_solve_captcha(lc, args):
     """--solve: solve whatever captcha man/machine demands and populate args.validate (+
     challenge/seccode for Geetest). Routes by captchaType:
@@ -346,6 +476,48 @@ def main(argv=None):
     fp.add_argument("--city", help="probe city (name or code)")
     fp.add_argument("--token", help="override t2 auth token")
     fp.set_defaults(func=cmd_filters)
+
+    wp = sub.add_parser("whoami", help="show the logged-in account's job expectations (expectId …)")
+    wp.add_argument("--json", action="store_true")
+    wp.add_argument("--set-expect", action="store_true",
+                    help="write the first expect's expectId/encryptExpectId back into the session")
+    wp.add_argument("--token", help="override t2 auth token")
+    wp.set_defaults(func=cmd_whoami)
+
+    dp = sub.add_parser("detail", help="show a job's detail (JD, boss, company) by securityId")
+    dp.add_argument("security_id", help="securityId from a search result")
+    dp.add_argument("--lid")
+    dp.add_argument("--expect-id")
+    dp.add_argument("--json", action="store_true")
+    dp.add_argument("--token", help="override t2 auth token")
+    dp.set_defaults(func=cmd_detail)
+
+    rp = sub.add_parser("recommend", help="geek F1 recommendation feed")
+    rp.add_argument("--page", type=int, default=1)
+    rp.add_argument("--limit", type=int, help="cap the number shown")
+    rp.add_argument("--expect-id")
+    rp.add_argument("--encrypt-expect-id")
+    rp.add_argument("--json", action="store_true")
+    rp.add_argument("--token", help="override t2 auth token")
+    rp.set_defaults(func=cmd_recommend)
+
+    cp = sub.add_parser("cities", help="dump BOSS city code/name table (from /api/zpCommon/config/city)")
+    cp.add_argument("--grep", help="only show cities whose name contains this text")
+    cp.add_argument("--json", action="store_true")
+    cp.add_argument("--token", help="override t2 auth token")
+    cp.set_defaults(func=cmd_cities)
+
+    hp = sub.add_parser("chat", help="打招呼/start a chat with a boss (WRITE; dry-run unless --confirm)")
+    hp.add_argument("security_id", help="securityId of the job (from search/detail)")
+    hp.add_argument("--job-id")
+    hp.add_argument("--lid")
+    hp.add_argument("--expect-id")
+    hp.add_argument("--friend-id")
+    hp.add_argument("--entrance")
+    hp.add_argument("--confirm", action="store_true", help="actually send it (default is dry-run)")
+    hp.add_argument("--json", action="store_true")
+    hp.add_argument("--token", help="override t2 auth token")
+    hp.set_defaults(func=cmd_chat)
 
     lp = sub.add_parser("login", help="SMS-code login -> obtain t2 into the session file")
     lp.add_argument("--phone", required=True, help="mobile number (without region code)")

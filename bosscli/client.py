@@ -62,6 +62,17 @@ class BossClient:
             return json.loads(yzwg._deframe(dec))
         return json.loads(dec)
 
+    def _decode_resp(self, content: bytes, key: str | None):
+        """Decode a response body. Non-whitelisted endpoints sign with the account secretKey; the
+        server usually encrypts the reply with that same key, but occasionally replies null-keyed
+        (or plaintext) — so try the request key first and fall back to None."""
+        try:
+            return self._decode(content, key)
+        except Exception:
+            if key is not None:
+                return self._decode(content, None)
+            raise
+
     @staticmethod
     def raise_for_auth(resp: dict) -> dict:
         """Turn a top-level code==7 into AuthExpired; pass anything else through."""
@@ -119,7 +130,7 @@ class BossClient:
         else:
             h = self._headers(); h["Content-Type"] = "application/x-www-form-urlencoded"
             r = self._http("POST", HOST + path, data=wire, headers=h)
-        return self.raise_for_auth(self._decode(r.content, key))
+        return self.raise_for_auth(self._decode_resp(r.content, key))
 
     def call_batch(self, subreqs: list[dict], key: str | None = None) -> dict:
         """Sign a /api/batch/requests call (net.bosszhipin.base.m.f branch); subreqs is a list of
@@ -130,7 +141,7 @@ class BossClient:
         s = signer.sign_batch(outer, body_json, BATCH_PATH, key=key)
         q = self._wire(s)
         r = self._http("GET", HOST + BATCH_PATH + "?" + q, data=s["encBody"], headers=self._headers())
-        return self.raise_for_auth(self._decode(r.content, key=key))
+        return self.raise_for_auth(self._decode_resp(r.content, key))
 
     # ---- search ----
     def search(self, query: str, city: str | None = None, page: int = 1, sort: int = -1,
@@ -150,6 +161,74 @@ class BossClient:
         cq["filterParams"] = json.dumps(fp, separators=(',', ':'), ensure_ascii=False)
         subreq_query = signer.build_query(cq)
         return self.call_batch([{"method": "GET", "path": CARDLIST_PATH, "query": subreq_query}], key=None)
+
+    # ---- authenticated geek read endpoints (RE'd from v14.050) ----
+    # Signing key: whitelisted paths (config.m.f43051a) use key=None like search; the rest use the
+    # account secretKey (LBase.getSecretKey, stored in the session as `secretKey`).
+    def _secret(self) -> str | None:
+        return self.s.get("secretKey")
+
+    def whoami(self, user_id: str = "0") -> dict:
+        """GetUserAccountGeekDetailRequest — GET /api/zpgeek/cvapp/geek/baseinfo/query (key=secretKey).
+        userId=0 means "me". Response geekDetail carries expectPositionList[].{expectId,encryptExpectId}."""
+        return self.call_plain("GET", "/api/zpgeek/cvapp/geek/baseinfo/query",
+                               {"userId": user_id}, key=self._secret())
+
+    def job_detail(self, security_id: str, lid: str | None = None, expect_id: str | None = None,
+                   query: str | None = None, extra: dict | None = None) -> dict:
+        """GetJobDetailRequest — GET /api/zpgeek/jobapp/geek/job/querydetail (key=secretKey).
+        Takes the securityId from a search result; response has jobBaseInfo/bossBaseInfo/brandComInfo."""
+        params = {"securityId": security_id, "lid": lid, "expectId": expect_id, "query": query}
+        if extra:
+            params.update(extra)
+        return self.call_plain("GET", "/api/zpgeek/jobapp/geek/job/querydetail", params, key=self._secret())
+
+    def recommend(self, page: int = 1, page_size: int = 15, expect_id: str | None = None,
+                  encrypt_expect_id: str | None = None, city: str | None = None,
+                  filter_params: dict | None = None, extra: dict | None = None) -> dict:
+        """GeekF1GetJobListRequest — GET /api/zpgeek/app/geek/recommend/joblist (key=None, whitelisted).
+        The geek F1 recommendation feed. expectId/encryptExpectId scope it to a job-expectation."""
+        params = {"page": str(page), "pageSize": str(page_size),
+                  "expectId": expect_id, "encryptExpectId": encrypt_expect_id, "city": city}
+        if filter_params:
+            params["filterParams"] = json.dumps(filter_params, separators=(',', ':'), ensure_ascii=False)
+        if extra:
+            params.update(extra)
+        return self.call_plain("GET", "/api/zpgeek/app/geek/recommend/joblist", params, key=None)
+
+    def cities(self) -> dict:
+        """Get1004CityRequest — GET /api/zpCommon/config/city (key=None, whitelisted). Full city
+        code/name tree (city / citylv2 / hotCity)."""
+        return self.call_plain("GET", "/api/zpCommon/config/city", {}, key=None)
+
+    def add_friend(self, security_id: str, job_id: str | None = None, lid: str | None = None,
+                   expect_id: str | None = None, friend_id: str | None = None,
+                   entrance: str | None = None, extra: dict | None = None) -> dict:
+        """GeekCreateFriendRequest — GET /api/zpgeek/app/friend/add (key=secretKey). WRITE action:
+        starts a chat / 打招呼 with a boss for a job. securityId identifies the position."""
+        params = {"securityId": security_id, "jobId": job_id, "lid": lid,
+                  "expectId": expect_id, "friendId": friend_id, "entrance": entrance}
+        if extra:
+            params.update(extra)
+        return self.call_plain("GET", "/api/zpgeek/app/friend/add", params, key=self._secret())
+
+    @staticmethod
+    def parse_expects(whoami_resp: dict) -> list[dict]:
+        """Pull [{expectId, encryptExpectId, positionName, salary, location}] out of a whoami response."""
+        data = whoami_resp.get("zpData", whoami_resp) or {}
+        detail = data.get("geekDetail") or data.get("geekDetailResponse") or data
+        out = []
+        for key in ("expectPositionList", "expectInternList", "expectList"):
+            for e in (detail.get(key) or []):
+                out.append({
+                    "expectId": e.get("expectId"),
+                    "encryptExpectId": e.get("encryptExpectId"),
+                    "positionName": e.get("positionName") or e.get("positionType"),
+                    "salary": e.get("salaryDesc") or e.get("salary"),
+                    "location": e.get("locationName") or e.get("location"),
+                    "kind": key,
+                })
+        return out
 
     @staticmethod
     def cardlist_data(resp: dict) -> dict:
