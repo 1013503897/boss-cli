@@ -31,11 +31,39 @@ new-image). `wyCaptchaType 1` = MODE_INTELLIGENT_NO_SENSE (not yet handled). Req
 
 ---
 
-## Geetest GT3 (captchaType 0/1) — pure-Python `w` builder + browser harvester
+## Geetest GT3 (captchaType 0/1) — `capsolver.py` (token mode) ✅ recommended, end-to-end verified
+
+BOSS's gt (`c1c659ff…`) currently serves the **九宫格点选** (3x3 icon/word click) challenge, not a
+slide — the pure-Python/browser slide solvers below do NOT handle it. `capsolver.py` sends the
+gt+challenge (from man/machine) to **CapSolver**, which solves the whole Geetest v3 challenge
+server-side (slide / icon-click / gobang / icon-crush, all stable) and returns
+`{challenge, validate, seccode}` in ~3-10s — **no browser, opencv or clicking**. Verified 2026-09-01:
+CapSolver solved 九宫格点选 in 3.8s and BOSS `send_sms_code` accepted the validate (`code=0`).
+
+```bash
+export CAPSOLVER_KEY=CAP-xxxxxxxx                       # from the CapSolver dashboard
+python -m bosscli.cli login --phone <号码> --solve      # captchaType 1 -> CapSolver -> send -> t2
+```
+
+Task: `GeetestTaskProxyless` @ `api.capsolver.com/createTask` (`websiteURL=https://www.zhipin.com`,
+`gt`, `challenge`, `geetestApiServerSubdomain=api.geetest.com`) → poll `getTaskResult`. Only needs
+`requests`. Cost ≈ $0.8-1.2 / 1000 (cheaper than the coordinate services). `--solve` prefers
+CapSolver when `CAPSOLVER_KEY` is set and falls back to the browser harvester below otherwise.
+
+### 备选：`chaojiying.py` (超级鹰坐标模式) — browser click via 九宫格 coordinate service
+
+If you'd rather keep the solve in-browser (coordinate mode, no third-party token): 超级鹰 recognizes
+the 3x3 grid → returns click coordinates; `browser_harvest.solve_click` screenshots the window
+(grid + prompt), clicks the returned cells + 确认, and Geetest emits the validate in our own
+zhipin.com session. Creds via env `CHAOJIYING_USER/PASS/SOFTID`. Slower and pricier than CapSolver.
+
+## Geetest GT3 slide — pure-Python `w` builder + browser harvester
 
 Reversed from BOSS直聘's login man/machine captcha (`GT3GeetestUtils`, gt=`c1c659ff…`), i.e.
 Geetest v3 `fullpage`→`slide3`. This reproduces the entire `w` parameter **offline in pure Python**
 and is **byte-exact against the real JS** and **accepted by Geetest's server** (`api.geetest.com`).
+(Note: BOSS's gt now serves 九宫格点选 rather than a slide, so in practice use CapSolver above; the
+slide harvester `browser_harvest.solve_slide` remains for gt configs that still issue a slide.)
 
 ## What was reversed
 
