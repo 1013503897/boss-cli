@@ -23,16 +23,25 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 ## Features
 
 - **Off-device search** — no phone, emulator, or unidbg at runtime; just Python + your session token.
+- **Off-device login** — SMS-code login reproduced end-to-end (`boss login`), so you can mint a fresh
+  `t2` yourself; the man/machine behaviour captcha (Geetest / 网易易盾) can be auto-solved (`--solve`).
 - **Multi-city in one call** — `--city 北京,上海,杭州`, by name or code.
-- **Keyword filter** — `--filter 远程` / `--filter 兼职` keeps only matching jobs (title / labels / company).
-- **Clean or JSON output** — human-readable list, or `--json` for scripting.
-- **MCP server** — expose search as a tool (`boss_search`) to Claude / any MCP client.
+- **Server-side filters** — `--salary` / `--experience` / `--degree` / `--industry` … (or the raw
+  `--filter-param KEY=VAL`); discover valid codes with `boss filters`.
+- **Pagination** — `--pages N` or `--all` (auto-dedup across pages and cities).
+- **Keyword post-filter** — `--filter 远程` / `--filter 兼职` keeps only matching jobs.
+- **Text / JSON / CSV / Markdown output** — `--format` (or `--json`), write to a file with `-o`.
+- **MCP server** — expose `boss_search` + `boss_filters` as tools to Claude / any MCP client.
 
 ## Install
 
 ```bash
-pip install -r requirements.txt          # lz4, requests   (mcp only needed for the MCP server)
+pip install -e .                 # installs the `boss` command (deps: requests, lz4)
+pip install -e ".[mcp]"          # + MCP server        (python -m bosscli.mcp_server)
+pip install -e ".[captcha]"      # + login captcha solvers (patchright/opencv/numpy/pycryptodome)
 ```
+
+Or run without installing: `python -m bosscli.cli <cmd> ...`.
 
 ## Get your session (one-time)
 
@@ -63,19 +72,44 @@ boss search "Python"                              # default city from your sessi
 boss search "数据分析" --city 上海
 boss search "安卓逆向" --city 北京,上海,杭州        # multi-city, results tagged [city]
 
-# filter / paginate / cap
-boss search "逆向" --city 北京,上海 --filter 远程   # only jobs mentioning 远程 (remote)
-boss search "Golang" --page 2 --limit 20
-boss search "算法" --json                          # parsed jobs as JSON
+# server-side filters + pagination + cap
+boss search "Python" --city 上海 --salary 407      # filterParams.salary code (see `boss filters`)
+boss search "逆向" --city 北京 --filter-param experience=104,105   # raw filterParams passthrough
+boss search "Golang" --pages 3 --limit 30          # fetch 3 pages, dedup, keep 30
+boss search "算法" --all                            # fetch until exhausted (cap 10 pages)
+
+# output
+boss search "AIGC" --city 深圳 --format md          # text | json | csv | md
+boss search "数据" --format csv -o jobs.csv         # write to a file
+boss search "逆向" --city 北京,上海 --filter 远程    # client-side post-filter on title/labels/company
+
+# discover valid filter/sort codes (industry / position / sort names)
+boss filters "Python" --city 上海
 
 # run without installing (module form)
 python -m bosscli.cli search "AIGC" --city 深圳
 ```
 
-Options: `--city` (name/code, comma-separated) · `--filter <text>` · `--page N` · `--sort -1` ·
-`--limit N` · `--json` · `--token <t2>` (override) · `--session <path>`.
+Search options: `--city` (name/code, comma-separated) · `--pages N` / `--all` · `--sort 综合|最新|距离`
+· `--limit N` · `--filter <text>` (post-filter) · `--filter-param KEY=VAL` (raw, repeatable) ·
+convenience filters `--salary/--experience/--degree/--scale/--stage/--jobtype/--industry/--position`
+· `--format text|json|csv|md` (`--json` shorthand) · `-o <file>` · `--token <t2>` · `--session <path>`.
 
 City names built in: 全国 / 北京 / 上海 / 广州 / 深圳 / 杭州 / 成都 / 南京 / 武汉 / 西安 / 苏州 / 天津 / 长沙 / 重庆 / 郑州 / 厦门 (others: pass the raw code).
+
+### Login (obtain a fresh `t2` off-device)
+
+```bash
+boss login --phone 15900000000 --solve            # solve man/machine captcha → send SMS → prompt code → t2
+boss login --phone 15900000000 --send             # only send the code
+boss login --phone 15900000000 --code 1234        # exchange an already-received code for t2
+```
+
+`login` reuses the device profile in your session file and writes the new `t2` back into it.
+The man/machine step almost always demands a behaviour captcha off-device — `--solve` handles both
+Geetest (via CapSolver when `CAPSOLVER_KEY` is set, else a browser harvester) and 网易易盾 (browser).
+The SMS code source is pluggable with `--sms-backend manual|env|http|module:func` (see
+[`bosscli/smsbackend.py`](bosscli/smsbackend.py)). See [`gt3solver/README.md`](gt3solver/README.md) for the captcha internals.
 
 ### MCP server
 
@@ -83,8 +117,8 @@ City names built in: 全国 / 北京 / 上海 / 广州 / 深圳 / 杭州 / 成�
 BOSS_SESSION=./session.local.json python -m bosscli.mcp_server
 ```
 
-Register it in your MCP client (e.g. `~/.claude.json`); the tool is
-`boss_search(query, city?, page?, sort?)`.
+Register it in your MCP client (e.g. `~/.claude.json`); the tools are
+`boss_search(query, city?, page?, sort?, filter_params?)` and `boss_filters(query?, city?)`.
 
 ## How it works (short version)
 
@@ -104,10 +138,14 @@ python tests/test_signer.py     # request assembly round-trip
 
 ```
 bosscli/yzwg.py     signing / encryption primitives (pure Python)
-bosscli/signer.py   batch-request assembly
-bosscli/client.py   search: build → send → decrypt → parse
-bosscli/cli.py      the `boss search ...` CLI
-bosscli/mcp_server.py  MCP wrapper (tool: boss_search)
+bosscli/signer.py   request assembly (batch + plain branches)
+bosscli/client.py   search + generic signed calls: build → send → decrypt → parse
+bosscli/login.py    off-device SMS-code login (man/machine → smsCode → codeLogin → t2)
+bosscli/smsbackend.py  pluggable SMS-code source for login (manual / env / http / custom)
+bosscli/output.py   text / json / csv / markdown rendering
+bosscli/cli.py      the `boss {search,filters,login}` CLI
+bosscli/mcp_server.py  MCP wrapper (tools: boss_search, boss_filters)
+gt3solver/          login captcha solvers (Geetest GT3 + 网易易盾) — see its README
 tests/              byte-exact regression tests + fixtures
 session.example.json   template for your session
 ```
@@ -136,16 +174,25 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 ## 功能
 
 - **离设备搜索** —— 运行时不需要手机 / 模拟器 / unidbg，只要 Python + 你的 session token。
+- **离设备登录** —— 短信验证码登录全链路复现（`boss login`），可自己拿新 `t2`；man/machine 行为
+  验证码（Geetest / 网易易盾）可 `--solve` 自动求解。
 - **一条命令多城市** —— `--city 北京,上海,杭州`，支持城市名或城市码。
-- **关键词筛选** —— `--filter 远程` / `--filter 兼职`，只保留标题/标签/公司命中的岗位。
-- **文本或 JSON 输出** —— 可读列表，或 `--json` 供脚本消费。
-- **MCP 服务** —— 把搜索暴露成工具（`boss_search`）给 Claude / 任意 MCP 客户端。
+- **服务端过滤器** —— `--salary` / `--experience` / `--degree` / `--industry` …（或原样透传
+  `--filter-param KEY=VAL`）；用 `boss filters` 查可用码表。
+- **翻页** —— `--pages N` 或 `--all`（跨页跨城自动去重）。
+- **关键词后筛** —— `--filter 远程` / `--filter 兼职`，只保留标题/标签/公司命中的岗位。
+- **文本 / JSON / CSV / Markdown 输出** —— `--format`（或 `--json`），`-o` 落盘。
+- **MCP 服务** —— 把 `boss_search` + `boss_filters` 暴露成工具给 Claude / 任意 MCP 客户端。
 
 ## 安装
 
 ```bash
-pip install -r requirements.txt          # lz4、requests（MCP 服务另需 mcp 包）
+pip install -e .                 # 装上 `boss` 命令（依赖：requests、lz4）
+pip install -e ".[mcp]"          # + MCP 服务       （python -m bosscli.mcp_server）
+pip install -e ".[captcha]"      # + 登录验证码求解器（patchright/opencv/numpy/pycryptodome）
 ```
+
+也可不安装直接跑：`python -m bosscli.cli <命令> ...`。
 
 ## 获取 session
 
@@ -174,19 +221,43 @@ boss search "Python"                              # 用 session 里的默认城�
 boss search "数据分析" --city 上海
 boss search "安卓逆向" --city 北京,上海,杭州        # 多城市，结果带 [城市] 标签
 
-# 筛选 / 翻页 / 限量
-boss search "逆向" --city 北京,上海 --filter 远程   # 只看提到“远程”的岗
-boss search "Golang" --page 2 --limit 20
-boss search "算法" --json                          # 解析后的职位 JSON
+# 服务端过滤器 + 翻页 + 限量
+boss search "Python" --city 上海 --salary 407      # filterParams.salary 码（见 `boss filters`）
+boss search "逆向" --city 北京 --filter-param experience=104,105   # 原样透传 filterParams
+boss search "Golang" --pages 3 --limit 30          # 抓 3 页、去重、留 30 条
+boss search "算法" --all                            # 抓到没有为止（最多 10 页）
+
+# 输出
+boss search "AIGC" --city 深圳 --format md          # text | json | csv | md
+boss search "数据" --format csv -o jobs.csv         # 写到文件
+boss search "逆向" --city 北京,上海 --filter 远程    # 客户端后筛（标题/标签/公司）
+
+# 查可用的过滤/排序码表（行业 / 职位 / 排序名）
+boss filters "Python" --city 上海
 
 # 不安装、直接模块方式跑
 python -m bosscli.cli search "AIGC" --city 深圳
 ```
 
-参数：`--city`（城市名/码，逗号分隔）· `--filter <文本>` · `--page N` · `--sort -1` ·
-`--limit N` · `--json` · `--token <t2>`（临时覆盖）· `--session <路径>`。
+搜索参数：`--city`（名/码，逗号分隔）· `--pages N` / `--all` · `--sort 综合|最新|距离` · `--limit N`
+· `--filter <文本>`（后筛）· `--filter-param KEY=VAL`（原样，可重复）· 便捷过滤
+`--salary/--experience/--degree/--scale/--stage/--jobtype/--industry/--position` ·
+`--format text|json|csv|md`（`--json` 简写）· `-o <文件>` · `--token <t2>` · `--session <路径>`。
 
 内置城市名：全国 / 北京 / 上海 / 广州 / 深圳 / 杭州 / 成都 / 南京 / 武汉 / 西安 / 苏州 / 天津 / 长沙 / 重庆 / 郑州 / 厦门（其它城市直接传城市码）。
+
+### 登录（离设备拿新 `t2`）
+
+```bash
+boss login --phone 15900000000 --solve            # 解 man/machine 验证码 → 发短信 → 输入验证码 → t2
+boss login --phone 15900000000 --send             # 只发验证码
+boss login --phone 15900000000 --code 1234        # 用已收到的验证码换 t2
+```
+
+`login` 复用 session 里的设备档，把新 `t2` 写回 session。离设备时 man/machine 几乎必弹行为验证码：
+`--solve` 同时支持 Geetest（配了 `CAPSOLVER_KEY` 走 CapSolver，否则走浏览器 harvester）和网易易盾（浏览器）。
+短信验证码来源可插拔：`--sms-backend manual|env|http|module:func`（见
+[`bosscli/smsbackend.py`](bosscli/smsbackend.py)）。验证码原理见 [`gt3solver/README.md`](gt3solver/README.md)。
 
 ### MCP 服务
 
@@ -194,7 +265,8 @@ python -m bosscli.cli search "AIGC" --city 深圳
 BOSS_SESSION=./session.local.json python -m bosscli.mcp_server
 ```
 
-在 MCP 客户端里注册（如 `~/.claude.json`）；工具名 `boss_search(query, city?, page?, sort?)`。
+在 MCP 客户端里注册（如 `~/.claude.json`）；工具名 `boss_search(query, city?, page?, sort?, filter_params?)`
+和 `boss_filters(query?, city?)`。
 
 ## 原理
 
