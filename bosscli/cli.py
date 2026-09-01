@@ -70,11 +70,13 @@ def cmd_search(args):
 
 
 def _auto_solve_captcha(lc, args):
-    """--solve: drive a real stealth browser to solve whatever captcha man/machine demands and
-    populate args.validate (+ challenge/seccode for Geetest). Routes by captchaType: 4 -> 网易易盾
-    (gt3solver.netease_harvest), 0/1 -> Geetest GT3 (gt3solver.browser_harvest). Needs the optional
-    heavy deps (patchright + Chrome + opencv/numpy); imported lazily so the manual --validate path
-    works without them."""
+    """--solve: solve whatever captcha man/machine demands and populate args.validate (+
+    challenge/seccode for Geetest). Routes by captchaType:
+      4   网易易盾 -> gt3solver.netease_harvest (browser slide solve)
+      0/1 Geetest -> CapSolver token mode (handles slide AND 九宫格点选, no browser) if CAPSOLVER_KEY
+          is set, else fall back to the browser harvester (opencv slide / 超级鹰 click).
+    All solvers are imported lazily so the manual --validate path works without their deps."""
+    import json as _json
     from .login import CAPTCHA_GEETEST, CAPTCHA_NETEASE
     mm = lc.man_machine(args.phone)
     if not mm["isMachine"]:
@@ -90,15 +92,34 @@ def _auto_solve_captcha(lc, args):
         args.validate = got["validate"]
         print("[✓] 网易易盾已解出 validate")
     elif ct in CAPTCHA_GEETEST:
+        sc = _json.loads(mm["startCaptcha"]) if mm.get("startCaptcha") else {}
+        gt, chal = sc.get("gt"), sc.get("challenge")
+        # 1) prefer CapSolver token mode — one API round-trip, covers slide + 九宫格点选, no browser
+        try:
+            from gt3solver.capsolver import CapSolver, CapSolverError
+            if not (gt and chal):
+                raise CapSolverError("man/machine 未返回 gt/challenge")
+            print("[*] Geetest：CapSolver token 求解…（slide/九宫格通用）")
+            got = CapSolver().solve_geetest_v3(gt, chal)
+            if not got.get("validate"):
+                raise CapSolverError("CapSolver 未返回 validate")
+            args.challenge = got["challenge"] or chal
+            args.validate = got["validate"]
+            args.seccode = got["seccode"]
+            print("[✓] CapSolver 解出 Geetest challenge/validate/seccode")
+            return
+        except Exception as e:
+            print(f"[i] CapSolver 不可用/失败（{e}）；回退浏览器 harvester")
+        # 2) fallback: browser harvester (opencv slide, or 九宫格点选 via 超级鹰)
         from gt3solver.browser_harvest import harvest
         print("[*] Geetest GT3：启动浏览器求解…")
         got = harvest(args.session, phone=args.phone, attempts=args.attempts, headless=headless)
         if not (got and got.get("geetest_validate")):
-            sys.exit("[✗] Geetest 未解出；重试，或加 --headful")
+            sys.exit("[✗] Geetest 未解出；建议配置 CAPSOLVER_KEY，或重试/加 --headful")
         args.challenge = got["geetest_challenge"]
         args.validate = got["geetest_validate"]
         args.seccode = got["geetest_seccode"]
-        print("[✓] Geetest 已解出 challenge/validate/seccode")
+        print("[✓] Geetest 已解出（browser）")
     else:
         sys.exit(f"[✗] 未知 captchaType={ct}，无法自动求解")
 

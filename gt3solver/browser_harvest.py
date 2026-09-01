@@ -45,6 +45,10 @@ try:
     from . import geetest_slide           # make_track (human trajectory shape)
 except ImportError:
     import geetest_slide
+try:
+    from .chaojiying import Chaojiying, ChaojiyingError   # 九宫格点选 coordinate solver
+except ImportError:
+    from chaojiying import Chaojiying, ChaojiyingError
 
 # make `bosscli` importable when run standalone from the repo (gt3solver/ is under boss-cli/)
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -224,6 +228,79 @@ def solve_slide(page, max_tries=5):
     return st(page)
 
 
+# --------------------------------------------------------------- 九宫格点选 (icon click) via 超级鹰
+def click_challenge_present(page):
+    return bool(page.query_selector(".geetest_item"))
+
+
+def screenshot_challenge(page):
+    """Screenshot the whole Geetest click window (the 3x3 grid AND the on-image prompt, which the
+    solver needs) and return (png_bytes, ox, oy) where (ox,oy) is the clip's top-left in CSS px.
+    With the context at device_scale_factor=1, screenshot px == CSS px, so a returned coordinate
+    (cx,cy) maps to the page as (ox+cx, oy+cy)."""
+    box = page.evaluate("""() => {
+        const sels=['.geetest_window','.geetest_widget','.geetest_box_wrap','.geetest_popup_box','.geetest_wind'];
+        for (const s of sels){ const e=document.querySelector(s); if(e){ const r=e.getBoundingClientRect();
+            if(r.width>40 && r.height>40) return {x:r.x,y:r.y,w:r.width,h:r.height}; } }
+        // fallback: union of the item cells, padded to include the prompt strip around them
+        const it=[...document.querySelectorAll('.geetest_item')]; if(!it.length) return null;
+        let x0=1e9,y0=1e9,x1=0,y1=0;
+        it.forEach(e=>{const r=e.getBoundingClientRect(); x0=Math.min(x0,r.left);y0=Math.min(y0,r.top);x1=Math.max(x1,r.right);y1=Math.max(y1,r.bottom);});
+        return {x:x0-10, y:y0-56, w:(x1-x0)+20, h:(y1-y0)+72};
+    }""")
+    if not box:
+        return None
+    clip = {"x": max(0.0, box["x"]), "y": max(0.0, box["y"]), "width": box["w"], "height": box["h"]}
+    return page.screenshot(clip=clip), clip["x"], clip["y"]
+
+
+def solve_click(page, cjy, max_tries=4):
+    """Solve the Geetest 3x3 icon/word-click via 超级鹰 coordinate mode: screenshot the window ->
+    get ordered click coordinates -> click each cell + 确认 -> Geetest emits the validate. Refunds
+    (report_error) and refreshes on a miss. Returns the final data-gt state."""
+    for t in range(max_tries):
+        page.wait_for_timeout(600)
+        s = st(page)
+        if s in ("success", "error", "closed"):
+            return s
+        if not click_challenge_present(page):
+            page.wait_for_timeout(500); continue
+        shot = screenshot_challenge(page)
+        if not shot:
+            print(f"    click try{t}: no window; refresh"); refresh_puzzle(page); continue
+        png, ox, oy = shot
+        try:
+            res = cjy.solve(png, codetype="9004")
+        except ChaojiyingError as e:
+            print(f"    click try{t}: 超级鹰 error: {e}"); return "error"
+        coords = res["coords"]
+        print(f"    click try{t}: {len(coords)} pts {coords} (pic_id={res['pic_id']})")
+        if not coords:
+            cjy.report_error(res["pic_id"]); refresh_puzzle(page); continue
+        for (cx, cy) in coords:                                   # click cells in returned order
+            px, py = ox + cx, oy + cy
+            page.mouse.move(px + np.random.uniform(-1.5, 1.5), py + np.random.uniform(-1.5, 1.5), steps=4)
+            page.wait_for_timeout(int(180 + 160 * np.random.rand()))
+            page.mouse.click(px, py)
+            page.wait_for_timeout(int(220 + 180 * np.random.rand()))
+        commit = page.query_selector(".geetest_commit")
+        if commit:
+            try:
+                commit.click(timeout=2000)
+            except Exception:
+                pass
+        for _ in range(16):
+            page.wait_for_timeout(240)
+            if st(page) in ("success", "error", "closed"):
+                break
+        s = st(page)
+        if s == "success":
+            return s
+        print(f"    click try{t}: not solved (state={s}); report+refresh")
+        cjy.report_error(res["pic_id"]); refresh_puzzle(page)
+    return st(page)
+
+
 # ------------------------------------------------------------------------------------ the harvest
 def harvest(session_path, phone="13800138000", attempts=3, headless=False, send_phone=None):
     """Harvest a Geetest validate for BOSS's man/machine gate. Returns the validate dict
@@ -238,9 +315,15 @@ def harvest(session_path, phone="13800138000", attempts=3, headless=False, send_
     lc = LoginClient.from_file(session_path)
     probe_phone = send_phone or phone
     got = None
+    try:                                     # 九宫格点选 needs 超级鹰 creds; slide does not
+        cjy = Chaojiying()
+    except ChaojiyingError as e:
+        cjy = None
+        print(f"[i] 超级鹰未配置 ({e}) — 只能解滑块；遇到九宫格点选会跳过")
     with sync_playwright() as p:
         br = p.chromium.launch(channel="chrome", headless=headless)
-        ctx = br.new_context(locale="zh-CN", timezone_id="Asia/Shanghai")
+        # device_scale_factor=1 -> screenshot px == CSS px, so 超级鹰 coords map 1:1 to page clicks
+        ctx = br.new_context(locale="zh-CN", timezone_id="Asia/Shanghai", device_scale_factor=1)
         page = ctx.new_page()
         page.on("response", lambda r: print(f"    [ajax {r.status}]") if "ajax.php" in r.url else None)
 
@@ -281,6 +364,10 @@ def harvest(session_path, phone="13800138000", attempts=3, headless=False, send_
                     final = s; break
                 if page.query_selector(".geetest_slider_button"):
                     print("    slide escalated -> solving"); final = solve_slide(page); break
+                if click_challenge_present(page):
+                    if cjy is None:
+                        print("    九宫格点选 escalated 但未配置超级鹰 — 跳过"); final = "no-solver"; break
+                    print("    九宫格点选 escalated -> solving via 超级鹰"); final = solve_click(page, cjy); break
             s = final or st(page)
             if s == "success":
                 got = json.loads(out(page) or "null")
