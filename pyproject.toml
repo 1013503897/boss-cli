@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boss-cli"
+version = "0.2.0"
+description = "Off-device BOSS直聘 (com.hpbr.bosszhipin) search + login — pure-Python libyzwg reproduction"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "weixingyu" }]
+keywords = ["bosszhipin", "reverse-engineering", "job-search", "cli"]
+dependencies = [
+    "requests>=2.28",
+    "lz4>=4.0",
+]
+
+[project.optional-dependencies]
+# MCP server (python -m bosscli.mcp_server)
+mcp = ["mcp>=1.2"]
+# login captcha solvers (gt3solver) — heavy, only needed for `boss login --solve`
+captcha = [
+    "patchright>=1.40",
+    "opencv-python>=4.9",
+    "numpy>=1.26",
+    "pycryptodome>=3.20",
+]
+
+[project.scripts]
+boss = "bosscli.cli:main"
+boss-mcp = "bosscli.mcp_server:main"
+
+[project.urls]
+Homepage = "https://github.com/1013503897/boss-cli"
+
+[tool.setuptools]
+packages = ["bosscli", "gt3solver"]

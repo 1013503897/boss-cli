@@ -21,7 +21,8 @@ def _client() -> BossClient:
 
 
 @mcp.tool()
-def boss_search(query: str, city: str | None = None, page: int = 1, sort: int = -1) -> dict:
+def boss_search(query: str, city: str | None = None, page: int = 1, sort: int = -1,
+                filter_params: dict | None = None) -> dict:
     """Search BOSS直聘 jobs off-device.
 
     Args:
@@ -29,9 +30,11 @@ def boss_search(query: str, city: str | None = None, page: int = 1, sort: int = 
         city:  city code, e.g. "101210100" (Hangzhou); default = session city.
         page:  1-based page number.
         sort:  -1 comprehensive (default), others per BOSS.
+        filter_params: extra filterParams, e.g. {"salary":"407","experience":"104,105"};
+                       discover valid codes with boss_filters.
     Returns: {count, jobs:[{name,salary,company,city,labels,jobId,securityId}], outer_code, cardlist_code}.
     """
-    resp = _client().search(query, city=city, page=page, sort=sort)
+    resp = _client().search(query, city=city, page=page, sort=sort, filter_params=filter_params)
     card = resp.get("zpData", {}).get("/api/zpgeek/app/geek/search/cardlist", {})
     jobs = BossClient.parse_jobs(resp)
     return {
@@ -41,6 +44,17 @@ def boss_search(query: str, city: str | None = None, page: int = 1, sort: int = 
         "message": card.get("message") or resp.get("message"),
         "jobs": jobs,
     }
+
+
+@mcp.tool()
+def boss_filters(query: str = "Python", city: str | None = None) -> dict:
+    """List the filter/sort options a live search advertises (sorts, industry/position codes,
+    labelFilter tags), so an agent can pick valid values for boss_search's sort/filter_params.
+    Returns: {sorts, nlpFilters, labelFilter}."""
+    resp = _client().search(query, city=city, page=1)
+    zp = BossClient.cardlist_data(resp)
+    return {"sorts": zp.get("sorts"), "nlpFilters": zp.get("nlpFilters"),
+            "labelFilter": zp.get("labelFilter")}
 
 
 def main():
