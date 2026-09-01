@@ -100,3 +100,14 @@ def native_calculate_crc32(input_bytes: bytes) -> str:
     if not input_bytes:
         return ""
     return str(zlib.crc32(input_bytes) & 0xffffffff)
+
+
+def native_encode_password(s: str) -> str:
+    """encodePassword: base64(RC4(SALT, utf8(s))). Byte-exact vs native (com.twl.signer.a.f).
+
+    Used to encrypt the phone number (login `account` / send-code `phone`) and passwords.
+    nativeEncodePassword @ 0x1ecb4 = base64_std(RC4(qword_444470, input)); the RC4 key is
+    qword_444470 (== SALT, no per-request key appended, since f() takes no key arg), the RC4
+    is standard, and the base64 is the STANDARD alphabet with '=' padding — NOT the url-safe
+    (-_~) variant that sp/native_encode_request uses. Verified against the device via frida RPC."""
+    return base64.b64encode(rc4(SALT.encode(), s.encode('utf-8'))).decode()

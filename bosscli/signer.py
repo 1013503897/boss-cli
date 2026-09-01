@@ -52,5 +52,20 @@ def sign_batch(outer_params: dict, body_json: str, url_path: str = "/api/batch/r
     return {"strD": strD, "encBody": encBody, "strA": strA, "sp": sp, "sig": sig}
 
 
+def sign_request(params: dict, url_path: str, key: str | None = None) -> dict:
+    """Sign a plain (non-batch) request — the net.bosszhipin.base.m.e() branch.
+
+    Unlike the batch branch there is no body and no strA:
+        strD = sorted+URLEncoded params  (both the common params and the request-specific ones)
+        sp   = nativeEncodeRequest(strD, key)
+        sig  = nativeSignature(f(url) + strD, key)      # NOTE: no strA appended
+    Login/send-code endpoints are on the m.j() whitelist -> key is null (no secretKey pre-login).
+    app_id is appended to the wire params AFTER signing (not part of strD)."""
+    strD = build_query(params)
+    sp = yzwg.native_encode_request(strD.encode('utf-8'), key)
+    sig = yzwg.native_signature((url_path + strD).encode('utf-8'), key)
+    return {"strD": strD, "sp": sp, "sig": sig}
+
+
 def now_ms() -> str:
     return str(int(time.time() * 1000))
