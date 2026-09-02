@@ -32,7 +32,7 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 - **Keyword post-filter** — `--filter 远程` / `--filter 兼职` keeps only matching jobs.
 - **Text / JSON / CSV / Markdown output** — `--format` (or `--json`), write to a file with `-o`.
 - **More endpoints** — `boss whoami` (your job expectations), `boss detail <securityId>` (full JD),
-  `boss recommend` (F1 feed), `boss cities` (code table), `boss chat` (打招呼, write — dry-run by default).
+  `boss cities` (code table), `boss chat` (打招呼, write — dry-run by default).
 - **MCP server** — expose `boss_search` + `boss_filters` as tools to Claude / any MCP client.
 
 ## Install
@@ -119,16 +119,15 @@ The SMS code source is pluggable with `--sms-backend manual|env|http|module:func
 boss whoami                      # this account's job expectations (expectId/encryptExpectId …)
 boss whoami --set-expect         # …and write the first one back into the session (fixes a stale expectId)
 boss detail <securityId>         # full job detail (JD text, boss, company) for a search-result securityId
-boss recommend --limit 20        # geek F1 recommendation feed
 boss cities --grep 杭州           # BOSS city code/name table (filterable); good for finding a cityCode
 boss chat <securityId>           # 打招呼: DRY-RUN by default; shows the request it would send
 boss chat <securityId> --confirm # …actually send it (WRITE — starts a chat under your account)
 ```
 
 These reuse the exact same signing as search/login: `whoami` / `detail` / `chat` sign with the
-account `secretKey` (they're not on BOSS's no-key whitelist), while `recommend` / `cities` are
-whitelisted and sign key-less like search. `boss chat` is a **write** action — it messages a boss on
-your behalf, so it never sends without `--confirm`.
+account `secretKey` (they're not on BOSS's no-key whitelist), while `cities` is whitelisted and
+signs key-less like search. `boss chat` is a **write** action — it messages a boss on your behalf,
+so it never sends without `--confirm`.
 
 ### MCP server
 
@@ -202,7 +201,7 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 - **关键词后筛** —— `--filter 远程` / `--filter 兼职`，只保留标题/标签/公司命中的岗位。
 - **文本 / JSON / CSV / Markdown 输出** —— `--format`（或 `--json`），`-o` 落盘。
 - **更多接口** —— `boss whoami`（你的求职期望）、`boss detail <securityId>`（完整 JD）、
-  `boss recommend`（F1 推荐流）、`boss cities`（城市码表）、`boss chat`（打招呼，写操作，默认 dry-run）。
+  `boss cities`（城市码表）、`boss chat`（打招呼，写操作，默认 dry-run）。
 - **MCP 服务** —— 把 `boss_search` + `boss_filters` 暴露成工具给 Claude / 任意 MCP 客户端。
 
 ## 安装
@@ -286,14 +285,13 @@ boss login --phone 15900000000 --code 1234        # 用已收到的验证码换 
 boss whoami                      # 当前账号的求职期望（expectId/encryptExpectId …）
 boss whoami --set-expect         # …并把第一个写回 session（修掉过期/换号后残留的 expectId）
 boss detail <securityId>         # 某岗位完整详情（JD 全文 / boss / 公司），securityId 来自搜索结果
-boss recommend --limit 20        # geek F1 推荐职位流
 boss cities --grep 杭州           # BOSS 城市码/名表（可筛），用来查 cityCode
 boss chat <securityId>           # 打招呼：默认 dry-run，只打印将要发送的请求
 boss chat <securityId> --confirm # …真正发送（写操作，会以你的账号发起沟通）
 ```
 
 这些接口复用与 search/login 完全相同的加签：`whoami` / `detail` / `chat` 不在 BOSS 的免 key 白名单上，
-用账号 `secretKey` 加签；`recommend` / `cities` 在白名单里，和 search 一样免 key。`boss chat` 是**写**操作
+用账号 `secretKey` 加签；`cities` 在白名单里，和 search 一样免 key。`boss chat` 是**写**操作
 （以你名义给 boss 发消息），因此不加 `--confirm` 绝不发送。
 
 ### MCP 服务

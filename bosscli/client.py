@@ -183,18 +183,11 @@ class BossClient:
             params.update(extra)
         return self.call_plain("GET", "/api/zpgeek/jobapp/geek/job/querydetail", params, key=self._secret())
 
-    def recommend(self, page: int = 1, page_size: int = 15, expect_id: str | None = None,
-                  encrypt_expect_id: str | None = None, city: str | None = None,
-                  filter_params: dict | None = None, extra: dict | None = None) -> dict:
-        """GeekF1GetJobListRequest — GET /api/zpgeek/app/geek/recommend/joblist (key=None, whitelisted).
-        The geek F1 recommendation feed. expectId/encryptExpectId scope it to a job-expectation."""
-        params = {"page": str(page), "pageSize": str(page_size),
-                  "expectId": expect_id, "encryptExpectId": encrypt_expect_id, "city": city}
-        if filter_params:
-            params["filterParams"] = json.dumps(filter_params, separators=(',', ':'), ensure_ascii=False)
-        if extra:
-            params.update(extra)
-        return self.call_plain("GET", "/api/zpgeek/app/geek/recommend/joblist", params, key=None)
+    # NOTE: geek F1 recommend (GET /api/zpgeek/app/geek/recommend/joblist) is intentionally NOT
+    # exposed. The app only ever calls it wrapped as a `jobListRequest` subReq inside
+    # GeekF1GetListBatchRequest → POST /api/batch/batchRunV2; called standalone (even with the full
+    # z10.b.g param set expectId/encryptExpectId/page/pageSize/sortType/expectPosition/filterParams)
+    # the server rejects it with code 71 参数格式异常. Reproducing the batchRunV2 envelope is future work.
 
     def cities(self) -> dict:
         """Get1004CityRequest — GET /api/zpCommon/config/city (key=None, whitelisted). Full city
