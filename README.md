@@ -123,8 +123,11 @@ boss whoami                      # this account's job expectations (expectId/enc
 boss whoami --set-expect         # …and write the first one back into the session (fixes a stale expectId)
 boss detail <securityId>         # full job detail (JD text, boss, company) for a search-result securityId
 boss cities --grep 杭州           # BOSS city code/name table (filterable); good for finding a cityCode
-boss chat <securityId>           # 打招呼: DRY-RUN by default; shows the request it would send
-boss chat <securityId> --confirm # …actually send it (WRITE — starts a chat under your account)
+# 打招呼 (WRITE): securityId/--lid/--friend-id all come from `boss search --json` (friend-id = the
+# result's userId). DRY-RUN unless --confirm. Verified live (code 0).
+boss search "python" --city 长沙 --json          # grab a job's securityId / lid / userId / jobId
+boss chat <securityId> --friend-id <userId> --job-id <jobId> --lid <lid>            # dry-run preview
+boss chat <securityId> --friend-id <userId> --job-id <jobId> --lid <lid> --confirm  # actually 打招呼
 ```
 
 These reuse the exact same signing as search/login: `whoami` / `detail` / `chat` sign with the
@@ -293,8 +296,11 @@ boss whoami                      # 当前账号的求职期望（expectId/encryp
 boss whoami --set-expect         # …并把第一个写回 session（修掉过期/换号后残留的 expectId）
 boss detail <securityId>         # 某岗位完整详情（JD 全文 / boss / 公司），securityId 来自搜索结果
 boss cities --grep 杭州           # BOSS 城市码/名表（可筛），用来查 cityCode
-boss chat <securityId>           # 打招呼：默认 dry-run，只打印将要发送的请求
-boss chat <securityId> --confirm # …真正发送（写操作，会以你的账号发起沟通）
+# 打招呼（写操作）：securityId/--lid/--friend-id 都来自 `boss search --json`（friend-id = 结果里的 userId）。
+# 不加 --confirm 只 dry-run。已实盘验证（code 0）。
+boss search "python" --city 长沙 --json          # 拿到某岗位的 securityId / lid / userId / jobId
+boss chat <securityId> --friend-id <userId> --job-id <jobId> --lid <lid>            # dry-run 预览
+boss chat <securityId> --friend-id <userId> --job-id <jobId> --lid <lid> --confirm  # 真正打招呼
 ```
 
 这些接口复用与 search/login 完全相同的加签：`whoami` / `detail` / `chat` 不在 BOSS 的免 key 白名单上，

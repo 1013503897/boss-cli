@@ -288,20 +288,28 @@ def cmd_cities(args):
 
 
 def cmd_chat(args):
-    """WRITE action — 打招呼/发起沟通. Dry-run by default; --confirm actually sends it."""
+    """WRITE action — 打招呼/发起沟通. Dry-run by default; --confirm actually sends it.
+    securityId / --lid / --friend-id(=userId) come from a SEARCH result (boss search --json),
+    NOT from job detail — friend/add only accepts the search-card securityId."""
     client = _client(args)
+    if not args.expect_id:   # default to the session's expectId (see `boss whoami --set-expect`)
+        args.expect_id = client.s.get("cardlist_defaults", {}).get("expectId")
     payload = {"securityId": args.security_id, "jobId": args.job_id, "lid": args.lid,
-               "expectId": args.expect_id, "friendId": args.friend_id, "entrance": args.entrance}
+               "expectId": args.expect_id, "friendId": args.friend_id, "applyJobDirectly": 1}
     if not args.confirm:
         print("[dry-run] 将向 GET /api/zpgeek/app/friend/add 发起打招呼（写操作，会以你的账号发出）：")
         print("  " + json.dumps({k: v for k, v in payload.items() if v is not None}, ensure_ascii=False))
         print("  确认无误后加 --confirm 真正发送。")
+        if not args.friend_id:
+            print("  [i] 建议带上 --friend-id <userId>（来自 boss search --json 的 userId），否则可能 code=17。")
         return
     resp = _run(lambda: client.add_friend(
         args.security_id, job_id=args.job_id, lid=args.lid, expect_id=args.expect_id,
-        friend_id=args.friend_id, entrance=args.entrance))
+        friend_id=args.friend_id))
     _check_code(resp, "chat")
-    print(f"[✓] 打招呼成功 · {resp.get('message') or 'ok'}")
+    rel = (resp.get("zpData") or {}).get("relation") or {}
+    print(f"[✓] 打招呼成功 · {resp.get('message') or 'ok'}"
+          + (f" · 已与 {rel.get('name')}（{rel.get('jobName')}）建立会话" if rel else ""))
     if args.json:
         print(json.dumps(resp, ensure_ascii=False, indent=2))
 
@@ -478,12 +486,11 @@ def main(argv=None):
     cp.set_defaults(func=cmd_cities)
 
     hp = sub.add_parser("chat", help="打招呼/start a chat with a boss (WRITE; dry-run unless --confirm)")
-    hp.add_argument("security_id", help="securityId of the job (from search/detail)")
+    hp.add_argument("security_id", help="securityId from a SEARCH result (boss search --json), not detail")
+    hp.add_argument("--friend-id", help="the boss's numeric userId (search result's 'userId')")
     hp.add_argument("--job-id")
-    hp.add_argument("--lid")
-    hp.add_argument("--expect-id")
-    hp.add_argument("--friend-id")
-    hp.add_argument("--entrance")
+    hp.add_argument("--lid", help="lid from the same search result")
+    hp.add_argument("--expect-id", help="your expectId (see boss whoami); default from the session")
     hp.add_argument("--confirm", action="store_true", help="actually send it (default is dry-run)")
     hp.add_argument("--json", action="store_true")
     hp.add_argument("--token", help="override t2 auth token")

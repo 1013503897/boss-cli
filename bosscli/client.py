@@ -196,11 +196,18 @@ class BossClient:
 
     def add_friend(self, security_id: str, job_id: str | None = None, lid: str | None = None,
                    expect_id: str | None = None, friend_id: str | None = None,
-                   entrance: str | None = None, extra: dict | None = None) -> dict:
-        """GeekCreateFriendRequest — GET /api/zpgeek/app/friend/add (key=secretKey). WRITE action:
-        starts a chat / 打招呼 with a boss for a job. securityId identifies the position."""
+                   apply_job_directly: int = 1, similar_position: str = "0",
+                   start_chat_exp_group: int = 0, extra: dict | None = None) -> dict:
+        """GeekCreateFriendRequest — GET /api/zpgeek/app/friend/add (key=secretKey). WRITE: starts a
+        chat / 打招呼. Verified live (code 0). The params mirror the app's ht.b.k builder:
+          * security_id / lid MUST come from the SEARCH-CARD (parse_jobs securityId/lid), NOT job_detail
+          * friend_id = the boss's numeric userId (parse_jobs 'userId')
+          * apply_job_directly defaults to 1 (the app always sends 1); entrance/jobAddressId are unused."""
         params = {"securityId": security_id, "jobId": job_id, "lid": lid,
-                  "expectId": expect_id, "friendId": friend_id, "entrance": entrance}
+                  "expectId": expect_id, "friendId": friend_id,
+                  "applyJobDirectly": str(apply_job_directly),
+                  "similarPosition": similar_position,
+                  "startChatProcessExpGroup": str(start_chat_exp_group)}
         if extra:
             params.update(extra)
         return self.call_plain("GET", "/api/zpgeek/app/friend/add", params, key=self._secret())
@@ -253,6 +260,7 @@ class BossClient:
                 "labels": j.get("jobLabels") or j.get("skills"),
                 "hr": (j.get("bossName") or j.get("name")),
                 "hrTitle": j.get("bossTitle"),
+                "userId": j.get("userId"),          # boss's numeric id — friendId for `boss chat`
                 "securityId": j.get("securityId"),
                 "lid": j.get("lid"),
             })
