@@ -17,6 +17,11 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 ...
 ```
 
+Or drive it from an AI agent (the MCP server) — e.g. *"find nationwide part-time Android
+reverse-engineering jobs"*, rendered straight into a table (company names redacted):
+
+![searching nationwide part-time reverse-engineering jobs through an AI agent](docs/agent-search-demo.png)
+
 > Research / educational project. It searches with **your own logged-in account's token**; you are
 > responsible for complying with BOSS直聘's Terms of Service. Don't hammer the API.
 
@@ -193,6 +198,10 @@ $ boss search "安卓逆向" --city 北京,上海,杭州
 - [杭州] android逆向开发 | 50-75K | 小算科技
 ...
 ```
+
+也可以让 AI agent 通过 MCP 来驱动 —— 比如「搜一下全国的安卓逆向兼职」，结果直接渲染成表格（公司名已打码）：
+
+![通过 AI agent 搜索全国安卓逆向兼职](docs/agent-search-demo.png)
 
 > 研究 / 学习用途。它用的是**你自己登录账号的 token** 去搜；请自行遵守 BOSS直聘的服务条款，别高频打接口。
 
