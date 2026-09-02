@@ -13,6 +13,8 @@ signer-unidbg/run_verbose*.log
 
 # secrets: session.local.json holds your t2 auth token + device profile
 session.local.json
+# secrets: .env holds CAPSOLVER_KEY / CHAOJIYING_* / BOSS_SMS_* — loaded by bosscli.localenv
+.env
 
 # large binaries / samples (not committed; see README for how to obtain)
 *.so

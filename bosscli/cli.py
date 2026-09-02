@@ -262,29 +262,6 @@ def cmd_detail(args):
         print("  " + jd.replace("\n", "\n  "))
 
 
-def cmd_recommend(args):
-    client = _client(args)
-    resp = _run(lambda: client.recommend(page=args.page, page_size=args.limit or 15,
-                                         expect_id=args.expect_id, encrypt_expect_id=args.encrypt_expect_id))
-    _check_code(resp, "recommend")
-    if args.json:
-        print(json.dumps(resp, ensure_ascii=False, indent=2)); return
-    zp = resp.get("zpData", resp) or {}
-    jobs = zp.get("jobList") or zp.get("results") or zp.get("list") or []
-    if not jobs:
-        print("# 未识别到 jobList，用 --json 看原始响应。keys=", list(zp.keys())); return
-    n = 0
-    for jc in jobs:
-        j = jc.get("jobInfo") or jc.get("job") or jc
-        b = jc.get("bossInfo") or {}
-        print(f"- {j.get('jobName') or j.get('positionName')} | {j.get('salaryDesc','')} | "
-              f"{j.get('brandName') or j.get('companyName','')}  ({b.get('name','')})")
-        n += 1
-        if args.limit and n >= args.limit:
-            break
-    print(f"# {n} recommended jobs")
-
-
 def cmd_cities(args):
     client = _client(args)
     resp = _run(lambda: client.cities())
@@ -461,6 +438,8 @@ def _add_search_filters(sp):
 
 
 def main(argv=None):
+    from .localenv import load_local_env
+    load_local_env()   # pull CAPSOLVER_KEY / CHAOJIYING_* / BOSS_SMS_* from a gitignored .env
     ap = argparse.ArgumentParser(prog="boss", description="Off-device BOSS直聘 search + login")
     ap.add_argument("--session", default=DEFAULT_SESSION,
                     help="session json (default: session.local.json / $BOSS_SESSION)")
@@ -491,15 +470,6 @@ def main(argv=None):
     dp.add_argument("--json", action="store_true")
     dp.add_argument("--token", help="override t2 auth token")
     dp.set_defaults(func=cmd_detail)
-
-    rp = sub.add_parser("recommend", help="geek F1 recommendation feed")
-    rp.add_argument("--page", type=int, default=1)
-    rp.add_argument("--limit", type=int, help="cap the number shown")
-    rp.add_argument("--expect-id")
-    rp.add_argument("--encrypt-expect-id")
-    rp.add_argument("--json", action="store_true")
-    rp.add_argument("--token", help="override t2 auth token")
-    rp.set_defaults(func=cmd_recommend)
 
     cp = sub.add_parser("cities", help="dump BOSS city code/name table (from /api/zpCommon/config/city)")
     cp.add_argument("--grep", help="only show cities whose name contains this text")

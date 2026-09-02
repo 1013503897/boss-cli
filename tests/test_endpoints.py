@@ -77,13 +77,6 @@ def test_cities_is_whitelisted_keynull():
     _assert_signed_with(calls[-1], "/api/zpCommon/config/city", None)
 
 
-def test_recommend_is_whitelisted_keynull():
-    c, calls = _capture()
-    c.recommend(page=2, expect_id="E1")
-    strD = _assert_signed_with(calls[-1], "/api/zpgeek/app/geek/recommend/joblist", None)
-    assert "expectId=E1" in strD and "page=2" in strD
-
-
 def test_secretkey_and_null_sigs_differ():
     # sanity: signing the same input with vs without the secretKey must differ
     a = yzwg.native_signature(b"/x?a=1", None)
