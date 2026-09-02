@@ -113,6 +113,9 @@ Geetest (via CapSolver when `CAPSOLVER_KEY` is set, else a browser harvester) an
 The SMS code source is pluggable with `--sms-backend manual|env|http|module:func` (see
 [`bosscli/smsbackend.py`](bosscli/smsbackend.py)). See [`gt3solver/README.md`](gt3solver/README.md) for the captcha internals.
 
+> Put `CAPSOLVER_KEY=...` (and optionally `CHAOJIYING_*` / `BOSS_SMS_*`) in a `.env` at the repo root
+> and it's auto-loaded on every run — no need to re-export it. `.env` is gitignored (never committed).
+
 ### More commands
 
 ```bash
@@ -157,11 +160,12 @@ python tests/test_signer.py     # request assembly round-trip
 ```
 bosscli/yzwg.py     signing / encryption primitives (pure Python)
 bosscli/signer.py   request assembly (batch + plain branches)
-bosscli/client.py   search + read/write endpoints (whoami/detail/recommend/cities/chat) + signed-call core
+bosscli/client.py   search + read/write endpoints (whoami/detail/cities/chat) + signed-call core
 bosscli/login.py    off-device SMS-code login (man/machine → smsCode → codeLogin → t2)
 bosscli/smsbackend.py  pluggable SMS-code source for login (manual / env / http / custom)
+bosscli/localenv.py    loads a gitignored .env (CAPSOLVER_KEY / CHAOJIYING_* / BOSS_SMS_*) at startup
 bosscli/output.py   text / json / csv / markdown rendering
-bosscli/cli.py      the `boss {search,filters,login}` CLI
+bosscli/cli.py      the `boss {search,filters,whoami,detail,cities,chat,login}` CLI
 bosscli/mcp_server.py  MCP wrapper (tools: boss_search, boss_filters)
 gt3solver/          login captcha solvers (Geetest GT3 + 网易易盾) — see its README
 tests/              byte-exact regression tests + fixtures
@@ -278,6 +282,9 @@ boss login --phone 15900000000 --code 1234        # 用已收到的验证码换 
 `--solve` 同时支持 Geetest（配了 `CAPSOLVER_KEY` 走 CapSolver，否则走浏览器 harvester）和网易易盾（浏览器）。
 短信验证码来源可插拔：`--sms-backend manual|env|http|module:func`（见
 [`bosscli/smsbackend.py`](bosscli/smsbackend.py)）。验证码原理见 [`gt3solver/README.md`](gt3solver/README.md)。
+
+> 把 `CAPSOLVER_KEY=...`（以及可选的 `CHAOJIYING_*` / `BOSS_SMS_*`）写进仓库根目录的 `.env`，
+> 每次运行自动加载，不用再 export。`.env` 已在 `.gitignore` 里（绝不进库）。
 
 ### 更多命令
 
